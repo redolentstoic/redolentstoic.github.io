@@ -1,3 +1,8 @@
+---
+layout: post
+title:  "Does your multiprocess really need a `CAS`?"
+date:   2015-5-31
+---
 
 Your processor most likely has a compare-and-swap (CAS) instruction that can be used for synchronization when programming a multi-threaded application. You can think of a CAS instruction as one that takes three arguments:
 
