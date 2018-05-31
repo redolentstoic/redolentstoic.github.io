@@ -4,14 +4,14 @@ title:  "Does your multiprocessor really need a CAS?"
 date:   2015-5-31
 ---
 
-### TL;DR Not really, but it is useful nevertheless. 
+### TL;DR Most likely not.
 
 Most modern processors support the compare-and-swap (`CAS`) instruction (e.g., `CMPXCHG` in x86 architectures). 
 You can think that a `CAS` instruction executes the following code **atomically**.
 
 {% highlight c %}
 boolean CAS(int *p, int v1, int v2) {
-	if (*p == v1) {
+    if (*p == v1) {
         *p = v2;
         return true;    
     }
@@ -48,6 +48,7 @@ One issue with such a linked list implementation is that it will not really scal
 
 Note, that a more performant [approach](https://people.csail.mit.edu/shanir/publications/Lazy_Concurrent.pdf) would be to use multiple locks in a more fine-grained approach. We could for instance have one lock for each node of the list and just lock nodes in the region where we are about to perform a modification. Such an approach would perform better but would also substantially complicate the implementation of our list. Still, such an approach would be blocking. 
 
+### Wait-freedom
 Algorithms that a delay of one thread cannot impede the progress of other threads are called _non-blocking algorithms_. 
 Such algorithms have the nice property that even if a thread crashes or slows-down, other threads can keep operating by for exampling adding elements to the list. Naturally, to implement non-blocking algorithms we have to refrain from using locks. Instead we can use synchronization primitives such as compare-and-swap, fetch-and-add, etc.
 There are actually at least two categories of non-blocking algorithms: `lock-free` and `wait-free` ones. A `wait-free` algorithm guarantees that if one thread does not perform progress . Of course, if each operation is executed at most once, then `lock-freedom` is equivalent to `wait-freedom`.
