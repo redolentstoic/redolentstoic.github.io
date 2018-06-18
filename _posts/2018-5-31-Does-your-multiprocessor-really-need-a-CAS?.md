@@ -4,6 +4,12 @@ title:  "Does your multiprocessor really need a CAS?"
 date:   2015-5-31
 ---
 
+
+| First Header  | Second Header |
+| ------------- | ------------- |
+| Content Cell  | Content Cell  |
+| Content Cell  | Content Cell  |
+
 Most modern processors support the compare-and-swap (`CAS`) instruction (e.g., `CMPXCHG` in x86 architectures). 
 You can think that a `CAS` instruction executes the following code **atomically**.
 
@@ -56,7 +62,7 @@ Such a scenario is quite likely to occur in practice. For instance, a thread mig
 In such a scenario, it could be that one process fails while holding the lock, while all the other processes are stuck forever waiting for the lock to be freed, even though this will never happen. For this reason, algorithms that use locks are also called _blocking_ algorithms since the delay of one thread has the potential of impeding the progress of other threads. Naturally, any algorithm that uses locks in some way will be a blocking algorithm.
 
 
-### Wait-freedom
+### Wait- and Lock-freedom
 Algorithms that a delay of one thread cannot impede the progress of other threads are called _non-blocking algorithms_. 
 Such algorithms have the nice property that even if a thread crashes or slows-down, other threads can progress (i.e., do not block).
 Since, we cannot use locks to implement non-blocking algorithms what can we use instead? 
