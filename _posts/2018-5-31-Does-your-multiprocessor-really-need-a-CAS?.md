@@ -4,8 +4,6 @@ title:  "Does your multiprocessor really need a CAS?"
 date:   2015-5-31
 ---
 
-### TL;DR Most likely not.
-
 Most modern processors support the compare-and-swap (`CAS`) instruction (e.g., `CMPXCHG` in x86 architectures). 
 You can think that a `CAS` instruction executes the following code **atomically**.
 
@@ -19,21 +17,22 @@ boolean CAS(int *p, int v1, int v2) {
 }
 {% endhighlight %}
 
-Since the whole instruction is performed atomically, `CAS` is useful when it comes to implement multi-threaded applications and we need the threads to synchronize in some way. For example, most non-blocking algorithm [implementations](https://github.com/LPD-EPFL/ASCYLIB) use `CAS`, from [linked lists](https://timharris.uk/papers/2001-disc.pdf) to [binary search trees](https://dl.acm.org/citation.cfm?id=2555256).
+Since the whole instruction is performed atomically, `CAS` is useful when it comes to implement multi-threaded applications and we need the threads to synchronize in some way. For example, most non-blocking algorithm mplementations use `CAS`, from [linked lists](https://timharris.uk/papers/2001-disc.pdf) to [binary search trees](https://dl.acm.org/citation.cfm?id=2555256).
 
 Most likely, you have heard or even used `CAS` at some point in your life.
-You might be using `CAS` even without you knowing it, by for instance, using a [`ConcurrentLinkedQueue`](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentLinkedQueue.html) in Java.
+You might be using `CAS` even without knowing it, by for instance, using a [`ConcurrentLinkedQueue`](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentLinkedQueue.html) in Java.
 You might also have heard that `CAS` is necessary to implement any non-blocking (e.g., lock-free) algorithm. It is for this reason that most modern processors support `CAS`. But is this really the case? Surprisingly the answer is **no**. 
 
-Maybe during college, you have taken a course in concurrency and learned about consensus, consensus number, consensus (or Herlihy's) hierarchy, etc., so you might think that "We definitely need a synchronization primitive with a consensus number of infinity such as `CAS`, otherwise we will not be able to implement non-blocking algorithms!" At least, this is what I would have said until recently. After all, the "selling point" of the consensus hierarchy is to decide which instructions to put in a processor based on their synchronization power. 
-However, this is not the case: We can implement any non-blocking algorithm for any number of threads using synchronization primitives that have consensus number one. You will see in this post that consensus hierarchy does not apply in actual systems. 
+Maybe during your university years, you have taken a course in concurrency and learned about consensus, consensus number, consensus (or Herlihy's) hierarchy, etc., so you might think that "We definitely need a synchronization primitive with a consensus number of infinity such as `CAS`, otherwise we will not be able to implement non-blocking algorithms!" At least, this is what I would have said until recently. After all, the "selling point" of the consensus hierarchy is to decide which instructions to put in a processor based on their synchronization power.
 
-If all the previous terminology confused you, do not worry. In this post, I will explain what non-blocking algorithms are, the consensus problem and the consensus hierarchy, the relation between `CAS` and the consensus problem, and why the consensus hierarchy does not apply in practice. At the end you will understand why *modern multiprocessors do not really need the `CAS` instruction*.
+However, this is not the case: We can implement any non-blocking algorithm for any number of threads using synchronization primitives that have consensus number one. Yes, one! In this post, you see why the consensus hierarchy does not apply in actual systems. 
+
+Do not worry if all the previous terminology confused you. I will explain what non-blocking algorithms are, the consensus problem and the consensus hierarchy, the relation between `CAS` and the consensus problem, and why the consensus hierarchy does not apply in practice. At the end you will understand why *modern multiprocessors do not really need the `CAS` instruction*.
 
 
 ## Non-blocking Algorithms
 Let us say that we want to implement the simplest possible concurrent (i.e., thread-safe) algorithm, namely a concurrent counter. 
-You could easily implement such a counter by first implementing a sequential (i.e., non thread-safe) counter. Then, you can introduce a global lock that each of your implemented functions needs to first `lock` and to `unlock` before returning, as seen below for the `i` function.
+You could easily implement such a counter by first implementing a sequential (i.e., non thread-safe) counter. Then, to make it concurrent, you can introduce a global lock. Each of your sequential functions would first need to `lock` this global lock, and at the end `unlock` it, as seen below for the `increment` function.
 
 {% highlight c %}
 lock* global_lock = create_lock();
@@ -48,15 +47,18 @@ int increment(int* counter) {
 }
 {% endhighlight %}
 
-The idea of using a global lock to transform a sequential algorithm to a concurrent one has the advantages that it is easy to implement such an algorithm and verify correct.
+The approach of using a global lock to transform a sequential algorithm to a concurrent one has the advantages that it is easy to implement such an algorithm and verify it is correct.
 Howerver it has some notable drawbacks.
-One issue with such an implementation is that it does not scale: as we increase the number of threads threads will contend on the global lock. 
-Another issue related to performance is the following: What if a thread that holds the lock suddenly stops executing before performing the unlock? Such a scenario is quite likely to occur in practice. For instance, a thread might stop executing for a period of time if it gets preempted by the OS, or the thread could slow down due to a page fault, a cache miss, etc. Even worse the thread might simply crash while holding the lock. To be honest if a thread crashes, the whole process will crash as well. But it could be that instead of threads we have processes that are sharing memory where the concurrent counter resides. In such a scenario, it could be that one process fails while holding the lock, while all the other processes are stuck forever waiting for the lock to be freed, even though this will never happen. For this reason, algorithms that use locks are also called _blocking_ algorithms since the delay of one thread has the potential of impeding the progress of other threads. Naturally, any algorithm that uses locks in some way will be a blocking algorithm.
+One issue with such an implementation is that it does not scale: as we increase the number of threads, threads will contend more on this global lock. 
+Another issue related to performance is the following: What if a thread that holds the lock suddenly stops executing? 
+In such a case, other threads will not be able to perform any operations either since the lock is held by a stopped thread.
+Such a scenario is quite likely to occur in practice. For instance, a thread might stop executing for a period of time if it gets preempted by the OS, or the thread could slow down due to a page fault, a cache miss, etc. Even worse the thread might simply crash while holding the lock. To be frank if a thread crashes, the whole process will crash as well. But it could be that instead of threads we have processes that are sharing memory.
+In such a scenario, it could be that one process fails while holding the lock, while all the other processes are stuck forever waiting for the lock to be freed, even though this will never happen. For this reason, algorithms that use locks are also called _blocking_ algorithms since the delay of one thread has the potential of impeding the progress of other threads. Naturally, any algorithm that uses locks in some way will be a blocking algorithm.
 
 
 ### Wait-freedom
 Algorithms that a delay of one thread cannot impede the progress of other threads are called _non-blocking algorithms_. 
-Such algorithms have the nice property that even if a thread crashes or slows-down, other threads can progress.
+Such algorithms have the nice property that even if a thread crashes or slows-down, other threads can progress (i.e., do not block).
 Since, we cannot use locks to implement non-blocking algorithms what can we use instead? 
 We can use synchronization primitives such as compare-and-swap, fetch-and-add, etc.
 For instance, to implement a non-blocking concurrent counter, we can simply use fetch-and-add as follows:
@@ -68,10 +70,10 @@ int increment(int* counter) {
 }
 {% endhighlight %}
 
-This concurrent counter does not have the drawback of the previous approach. In case a thread that is about to increment the counter gets preempted for a great amount of time, other threads can keep using and incrementing this counter.
-Unfortunately, although not obvious from this example, non-blocking algorithms are much harder to devise and verify correct.
+This concurrent counter does not have the drawback of the previous global-lock approach. In case a thread that is about to increment the counter gets preempted for a great amount of time, other threads can keep using and incrementing this counter. Unfortunately, non-blocking algorithms are much harder to devise and verify correct. For example, the first [non-blocking binary search tree](https://dl.acm.org/citation.cfm?id=1835736) is a quite involved algorithm that was devised pretty recently (in 2010).
 
-There are actually at least two categories of non-blocking algorithms: *lock-free* and *wait-free* ones. A *wait-free* algorithm guarantees that if one threads keeps taking steps (i.e., the scheduler provides its with quantam), then each function call that takes steps (i.e., is not stopped forever) will finish in a finite number of steps. For instance, the above counter is a wait-free counter. *Lock-freedom* on the other hands asks that at least one thread always finish in a finite number of steps. Lock-freedom allows individual threads to starve but the system as a whole makes progress. For instance, let us assume we wanted to implement the aforementioned concurrent counter using compare-and-swap. An approach would be the following:
+There are actually at least two categories of non-blocking algorithms: *lock-free* and *wait-free* ones. Specifically, a function is *wait-free* if it guarantees that if one threads keeps taking steps (i.e., the scheduler gives it time slices), then the function call will terminate in a finite number of steps. For instance, the above counter is a wait-free counter, since we are guaranteed that every call to `increment` will finish in a finite number of steps. 
+A function is *lock-freed* on the other hand, if at least one thread always completes its execution in a finite number of steps. Lock-freedom allows individual threads to starve but the system as a whole makes progress, since some thread will always complete the execution of such a function. For instance, let us assume we wanted to implement the aforementioned concurrent counter using compare-and-swap. An approach would be the following:
 
 {% highlight c %}
 int increment(int* counter) {
@@ -83,7 +85,22 @@ int increment(int* counter) {
 }
 {% endhighlight %}
 
-The above algorithm is non-blocking but is not wait-free. To see this, think that one thread is faster than all the others, so its `CAS` always succeeds while all the other threads fail to succeed. The algorithm is lock-free instead, some function will always terminate in a finite number of steps.
+The above algorithm is non-blocking but is not wait-free. To see this, think of two threads (t0 and t1) that execute as follows. I assume that the `counter` contains `0` initially and in the following table, time moves from top to bottom.
+
+| thread 0      |   thread 1    |  description |
+| ------------- |:-------------:|--------:|
+| value = 0     |     value = 0 |   |
+|     no step   |    CAS(counter, 0, 1)| CAS succeeds |
+|   no step     |     return 0  | |
+|  CAS(counter, 0, 1) | value = 1 | CAS fails |
+|   value = 1    |     no step |  |
+|     no step   |    CAS(counter, 1, 2)| CAS succeeds |
+|   no step     |     return 2  | | 
+|  CAS(counter, 1, 2) | no step | CAS fails |
+|  ... | ... | |
+
+
+that one thread is faster than all the others, so its `CAS` always succeeds while all the other threads fail to succeed. The algorithm is lock-free instead, some function will always terminate in a finite number of steps.
 Of course, if each operation is executed at most once, then `lock-freedom` is equivalent to `wait-freedom`.
 
 
@@ -120,9 +137,11 @@ int propose(int value) {
 }
 {% endhighlight %}
 
-This was straight-forward as well. Note that the above algorithms, can be executed by any number of threads and they will all return the exact same decided value. Le us see if we can devise a non-blocking algorithm to solve consensus by only using fetch-and-add. A solution for two threads
+This was straight-forward as well. Note that the above algorithms, can be executed by any number of threads and they will all return the exact same decided value. Let us see if we can devise a non-blocking algorithm to solve consensus by only using `fetch-and-add`. A solution for two threads
 would be the following:
 {% highlight c %}
+int decision = -1;
+
 
 {% endhighlight %}
 
