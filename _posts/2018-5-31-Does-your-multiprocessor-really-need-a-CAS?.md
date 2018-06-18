@@ -226,5 +226,5 @@ Wait, what? This paper argues, that we can use objects with consensus number 2 t
 There were at least two more papers that worked on this result: DISC17, PODC18. DISC17 did this and that, while PODC18 did that and the other.
 
 ## Conclusion
-To conclude. You do not really need compare-and-swap in your multiprocessor to implement a non-blocking algorithm for any number of threads. I hope I convinced you for that. However, having a single instruction that is so powerful as `CAS` is pretty useful. Even if we implemented `CAS` using lower-level instructions, such an implementation is likely to be substantially less performant than using `CAS`.
+To conclude. You do not really need compare-and-swap in your multiprocessor to implement a non-blocking algorithm for any number of threads. I hope I convinced you for that. However, having a single instruction that is so powerful as `CAS` is pretty useful. Even if we implemented `CAS` using lower-level instructions, such an implementation is likely to be substantially less performant than using `CAS`. If you want to learn more about all these things, the book "The Art of Multiprocessor Programming" is an excellent source.
 
