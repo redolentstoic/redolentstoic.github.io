@@ -4,6 +4,12 @@ title:  "Does your multiprocessor really need a CAS?"
 date:   2015-5-31
 ---
 
+<style>
+.tablelines table, .tablelines td, .tablelines th {
+        border: 1px solid black;
+        }
+</style>
+
 
 | First Header  | Second Header |
 | ------------- | ------------- |
