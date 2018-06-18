@@ -87,6 +87,13 @@ int increment(int* counter) {
 
 The above algorithm is non-blocking but is not wait-free. To see this, think of two threads (t0 and t1) that execute as follows. I assume that the `counter` contains `0` initially and in the following table, time moves from top to bottom.
 
+| Tables        | Are           | Cool  |
+| ------------- |:-------------:| -----:|
+| col 3 is      | right-aligned | $1600 |
+| col 2 is      | centered      |   $12 |
+| zebra stripes | are neat      |    $1 |
+
+
 | thread 0      |   thread 1    |  description |
 | ------------- |:-------------:|--------:|
 | value = 0     |     value = 0 |   |
