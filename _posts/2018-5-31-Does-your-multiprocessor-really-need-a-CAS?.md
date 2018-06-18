@@ -143,7 +143,10 @@ int propose(int value) {
 
 Note that a lock can be implemented only using read and write instructions ([Bakery's algorithm](https://en.wikipedia.org/wiki/Lamport%27s_bakery_algorithm)), so we can solve consensus in a blocking setting just by using read and write instructions.
 
-Blocking consensus algorithms are not that interesting, so let us devise some non-blocking algorithm to solve consenus.
+Blocking consensus algorithms are not that interesting, so let us devise some non-blocking algorithm to solve consenus. We will pay attention only to wait-free algorithms. 
+Before we move on, note that implementing a non-blocking wait-free algorithm for consensus is fundamental. By solving consensus for any number of threads we can actually take any sequential algorithm and transform it to a concurrent wait-free concurrent one. An algorithm that can perform such a tranformation is called a __universal construction__.
+The main idea behind devisiong a universal construction algorithm is using consensus as a base to order function calls to the sequential algorithm, but this is beyond the scope of this blog post, so we will not delve into it.
+
 
 We start by providing a consensus algorithm that uses compare-and-swap:
 {% highlight c %}
@@ -173,56 +176,55 @@ int propose(int value) {
 {% endhighlight %}
 The solution works as follows. We assume that each thread is associated with a `thread_id`. One thread has `thread_id = 0` while the other has `thread_id = 1`. Before the threads increment the `counter`, they store the value they want to propose to their respective slot in the `proposed_values` array. The first thread that performs the `fetch_and_add` will get `0` as a return value and is considered to "win" the consensus hence it returns its own value. Otherwise, if a thread loses, it returns the other thread's proposed value.
 
-Assume now, we want to solve consensus between three threads by only using `fetch_and_add`, `read`, and `write` instructions. Well, we *cannot*! It is impossible! 
+Assume now, we want to solve consensus between three threads by only using `fetch_and_add`, `read`, and `write` instructions. Well, we *cannot*! It is impossible.
+If you are interested you can find a proof here but it is beyond the discussion of this post.
+Surprisingly, using `CAS` we can solve consensus for any number of threads, while by only using `fetch_and_add`` we can solve consensus for up to two threads. This lead us to a hierarchy of instructions based on their power to solve consensus, known as the _consensus hierarchy_.
 
-Surprisingly, fetch&add cannot be used to solve consensus among three threads. Try it! If you are interested you can find a proof here but it is beyond the discussion of this post.
-
-On the other hand, `CAS` can be used to solve consensus for any number of threads. How would this go?
-
-
-### Universal Construction
-Consensus is fundamental, since if we solve consensus for any number of threads we can actually take any sequential algorithm and transform it to a wait-free concurrent one (something known as universal construction). How can this be done
-any sequential object can be implemented 
 
 
 ### Consensus Hierarchy
-Herlihy was the first to notice that different object can solve consensus for different number of threads and proposed a hierarchy that captures the power of these primitives.
+[Maurice Herlihy](http://cs.brown.edu/people/mph/) was the first to notice that different object can solve consensus for different number of threads and proposed a hierarchy that captures the power of these primitives. This hierarchy is based on the notion of a _consensus number_. An instruction ins has consensus number k if it can solve consensus in a wait-free manner for up to k threads. In the following table, you can see some instructions and their corresponding consensus number. `CAS` has consensus number of infinity since it can be used to solve consensus between an arbitrary number of threads. 
 
-This lead processor vendors to start introducing powerful primitives such as CAS in their processors. At least that's what some people believe (Vassos hadzilacos paper + impossibility results for distributed computing ...)
+| instruction   |  consensus number   | 
+| ------------- |:-------------:|
+|   `CAS`       |   +oo  |
+|  ...           |   .... |
+| `fetch-and_add` | 2 |
+| `read/write`  | 1 |
 
-## In Practice 
-If you asked me until recently, do we need `CAS` in multiprocessors I would say yes. But is this really the case?
-In the distinguished PODC 16 a paper was presented with the title " ." The authors mention that 
+Herlihy also showed that, for any k we can devise an instruction that has this consensus number.
 
-"  "
+The folklore belief is that the fact that `CAS` is more powerful in this sense compared to other instructions, lead processor designers to introduce the `CAS` in their processors. 
 
-But how is this possible. Herlihy's hierarchy talks about operations by themselves, but in reality in multi-processors we can apply more than one operation to a specific memory location. We can for example apply a `fetch&add`, a `xor`, etc.
-
+Actually, a "selling-point" behind the consensus hiearchy was exactly that as you can see in the excerpt below taken from the Herlihy's paper that introduced the hierarchy.
 
 [Wait-Free Synchronization](https://cs.brown.edu/~mph/Herlihy91/p124-herlihy.pdf)
 > We have tried to suggest here that the resulting theory has a rich structure, yielding a number of unexpected results with consequences for algorithm design, multiprocessor architectures, and real-time systems.
 
+Others, also have hinted that the fact that compare-and-swap is so powerful was the reason that it was added in  modern processors. To prove this fact, I provide two excerpts below:
 
 [A Quarter-Century of Wait-Free Synchronization](https://dl.acm.org/citation.cfm?id=2789164
 )
-> *Impact 6: Design of multiprocessors?*
-> I put a question mark for this impact, because here I am speculating: I do not really know why, in the late 1980s and early 1990s, multiprocessor architects abandoned operations with low consensus number in favour of universal ones. But the timing is such that I wouldn’t be surprised to learn that these architects were influenced, at least in part, by Herlihy’s discovery that, from the perspective of wait-free synchronisation, much more is possible with operations such as compare-and-swap or load-linked/store-conditional than with operations such as test-and-set or fetch-and-add.
+> I do not really know why, in the late 1980s and early 1990s, multiprocessor architects abandoned operations with low consensus number in favour of universal ones. But the timing is such that I wouldn’t be surprised to learn that these architects were influenced, at least in part, by Herlihy’s discovery that, from the perspective of wait-free synchronisation, much more is possible with operations such as compare-and-swap or load-linked/store-conditional than with operations such as test-and-set or fetch-and-add.
 
 [Impossibility Results for Distributed Computing](https://www.morganclaypool.com/doi/abs/10.2200/S00551ED1V01Y201311DCT012)
 > For example, the unsolvability of consensus in asynchronous shared memory systems where processes communicate through registers has led to manufacturers including more powerful primitives such as compare&swap into their architectures
 
-### Compare-and-swap
+## In Practice 
+Based on what I described so far, it seems natural that `CAS` is needed in multiprocessors. But is this really the case?
+At least, that is what I thought until recently. Until I stumbled upon this paper: [A Complexity-Based Hierarchy for Multiprocessor Synchronization](https://dl.acm.org/citation.cfm?id=2933113). In it the authors state:
 
-You might even known that `CAS` can be used to implement any wait-free algorithm for any number of threads
+> Objects that support only one of these instructions as an operation
+have consensus number 2 and cannot be combined to
+solve wait-free consensus for 3 or more processes. However,
+a system that supports both instructions can solve wait-free
+binary consensus for any number of processes.
+
+Wait, what? This paper argues, that we can use objects with consensus number 2 to have an object with consensus number infinity. How is this even possible? Let us see. The authors state " ". Herlihy's hierarchy talks about operations by themselves, but in reality in multi-processors we can apply more than one operation to a specific memory location. We can for example apply a `fetch&add`, a `xor`, etc.
 
 
-**Solving consensus with smaller objects ... PODC 16, DISC17, PODC18**
+There were at least two more papers that worked on this result: DISC17, PODC18. DISC17 did this and that, while PODC18 did that and the other.
 
 ## Conclusion
-Hopefully, I managed to convince you that the compare-and-swap instruction is not technically needed in multiprocessors. You could still implement a wait-free algorithm using much less powerful synchronizaton primitives. However, having a single instruction that is so powerful is something extremely useful.
+To conclude. You do not really need compare-and-swap in your multiprocessor to implement a non-blocking algorithm for any number of threads. I hope I convinced you for that. However, having a single instruction that is so powerful as `CAS` is pretty useful. Even if we implemented `CAS` using lower-level instructions, such an implementation is likely to be substantially less performant than using `CAS`.
 
-
-
-# Notes 
-
-Note, that a more performant [approach](https://people.csail.mit.edu/shanir/publications/Lazy_Concurrent.pdf) would be to use multiple locks in a more fine-grained approach. We could for instance have one lock for each node of the list and just lock nodes in the region where we are about to perform a modification. Such an approach would perform better but would also substantially complicate the implementation. Still, such an approach would be blocking. 
