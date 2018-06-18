@@ -8,7 +8,7 @@ date:   2015-5-31
 table{
     border-collapse: collapse;
     border-spacing: 0;
-    border:2px solid #ff0000;
+    border:2px solid #000000;
 }
 
 th{
@@ -19,12 +19,6 @@ td{
     border:1px solid #000000;
 }
 </style>
-
-
-| First Header  | Second Header |
-| ------------- | ------------- |
-| Content Cell  | Content Cell  |
-| Content Cell  | Content Cell  |
 
 Most modern processors support the compare-and-swap (`CAS`) instruction (e.g., `CMPXCHG` in x86 architectures). 
 You can think that a `CAS` instruction executes the following code **atomically**.
@@ -107,37 +101,30 @@ int increment(int* counter) {
 }
 {% endhighlight %}
 
-The above algorithm is non-blocking but is not wait-free. To see this, think of two threads (t0 and t1) that execute as follows. I assume that the `counter` contains `0` initially and in the following table, time moves from top to bottom.
-
-| Tables        | Are           | Cool  |
-| ------------- |:-------------:| -----:|
-| col 3 is      | right-aligned | $1600 |
-| col 2 is      | centered      |   $12 |
-| zebra stripes | are neat      |    $1 |
-
+The above algorithm is non-blocking but is not wait-free. To see this, think of two threads (t0 and t1) that keep callling `increment` and that execute as follows. I assume that the `counter` contains `0` initially and in the following table, time moves from top to bottom.
 
 | thread 0      |   thread 1    |  description |
 | ------------- |:-------------:|--------:|
-| value = 0     |     value = 0 |   |
-|     no step   |    CAS(counter, 0, 1)| CAS succeeds |
-|   no step     |     return 0  | |
-|  CAS(counter, 0, 1) | value = 1 | CAS fails |
-|   value = 1    |     no step |  |
-|     no step   |    CAS(counter, 1, 2)| CAS succeeds |
-|   no step     |     return 2  | | 
-|  CAS(counter, 1, 2) | no step | CAS fails |
+| `value = 0`  |  `value = 0` |   |
+|     no step   |    `CAS(counter, 0, 1)` | `CAS` succeeds |
+|   no step     |     `return 0`  | |
+|  `CAS(counter, 0, 1)` | `value = 1` | `CAS` fails since counter has already been modified |
+|   `value = 1`    |     no step |  |
+|     no step   |    `CAS(counter, 1, 2)`| `CAS` succeeds |
+|   no step     |     `return 2`  | | 
+|  `CAS(counter, 1, 2)` | no step | `CAS` fails |
 |  ... | ... | |
 
+As you can see in the above execution, thread 1 always suceeds in performing the `CAS` and has completing an `increment` execution, while thread 0 never does. Nevertheless, if a thread fails in the `CAS`, this means that same other thread succeeded and hence there is progress.
 
-that one thread is faster than all the others, so its `CAS` always succeeds while all the other threads fail to succeed. The algorithm is lock-free instead, some function will always terminate in a finite number of steps.
-Of course, if each operation is executed at most once, then `lock-freedom` is equivalent to `wait-freedom`.
+As a remark, notice that if each thread executes a function at most once, then in such a setting a `lock-free` function is equivalent to being `wait-free`.
 
 
 ## Consensus
 Consensus is a problem that asks for a set of threads to agree on a common value. Specifically, each thread proposes one value and all the threads have to agree on the exact same value that was proposed by some thread.
 Consensus is actually a fundamental problem in computer science that first appeared in a distributed setting in which processes try to agree on a common value over a network. 
 
-Specifically, the consensus algorithm implements a `int propose(int value)` function that each thread calls exactly once, and the end all the threads needs to return the exact same value that corresponds to one of the given values (i.e., at least some thread should have proposed that value).
+The consensus algorithm implements a `int propose(int value)` function that each thread calls exactly once, and at the end all the threads needs to return the exact same value that corresponds to one of the given values (i.e., at least some thread should have proposed that value).
 
 Devising a blocking-algorithm to solve consensus is fairly straight-forward. For instance:
 {% highlight c %}
@@ -154,9 +141,11 @@ int propose(int value) {
 }
 {% endhighlight %}
 
-Note that a lock can be implemented only using read and write instructions (Bakery's algorithm), so we can solve consensus in a blocking setting just by using read and write instructions.
+Note that a lock can be implemented only using read and write instructions ([Bakery's algorithm](https://en.wikipedia.org/wiki/Lamport%27s_bakery_algorithm)), so we can solve consensus in a blocking setting just by using read and write instructions.
 
-Let us devise a non-blocking algorithm to solve consenus using compare-and-swap:
+Blocking consensus algorithms are not that interesting, so let us devise some non-blocking algorithm to solve consenus.
+
+We start by providing a consensus algorithm that uses compare-and-swap:
 {% highlight c %}
 int decision = -1; 
 
@@ -166,20 +155,25 @@ int propose(int value) {
 }
 {% endhighlight %}
 
-This was straight-forward as well. Note that the above algorithms, can be executed by any number of threads and they will all return the exact same decided value. Let us see if we can devise a non-blocking algorithm to solve consensus by only using `fetch-and-add`. A solution for two threads
-would be the following:
+This was straight-forward as well. Note that the above algorithms, can be executed by any number of threads and they will all return the exact same decided value. Let us see if we can devise a non-blocking algorithm to solve consensus by only using `fetch-and-add`. A solution for two threads would be the following:
+
 {% highlight c %}
-int decision = -1;
+int proposed_values[2];
+int init_counter = 0;
+int *counter = &init_counter;
 
-
+int propose(int value) {
+    proposed_values[thread_id] = value;
+    int tmp = fetch_and_add(counter);
+    if (tmp == 0) { // thread was first to increment the counter
+        return value; 
+    }
+    return proposed_valued[1 - thread_id];
+}
 {% endhighlight %}
+The solution works as follows. We assume that each thread is associated with a `thread_id`. One thread has `thread_id = 0` while the other has `thread_id = 1`. Before the threads increment the `counter`, they store the value they want to propose to their respective slot in the `proposed_values` array. The first thread that performs the `fetch_and_add` will get `0` as a return value and is considered to "win" the consensus hence it returns its own value. Otherwise, if a thread loses, it returns the other thread's proposed value.
 
-
-But wait what if we have three threads.
-
-For example, assume we have two threads, how could we solve consensus in such a setting. We use fetch&add. ...
-
-If we just use read/write instructions ...
+Assume now, we want to solve consensus between three threads by only using `fetch_and_add`, `read`, and `write` instructions. Well, we *cannot*! It is impossible! 
 
 Surprisingly, fetch&add cannot be used to solve consensus among three threads. Try it! If you are interested you can find a proof here but it is beyond the discussion of this post.
 
