@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Does your multiprocessor really need a CAS?"
-date:   2015-5-31
+date:   2018-5-31
 ---
 
 <style>
@@ -20,13 +20,11 @@ td{
 }
 </style>
 
-I have to CHANGE The discussion to OBJECTS ... not instructions ... now the mix is complicated.
-
 
 Most modern processors support the compare-and-swap (`CAS`) instruction (e.g., `CMPXCHG` in x86 architectures). 
 You can think that a `CAS` instruction executes the following code **atomically**.
 
-{% highlight java %}
+{% highlight C %}
 boolean CAS(int *p, int v1, int v2) {
     if (*p == v1) {
         *p = v2;
@@ -36,15 +34,15 @@ boolean CAS(int *p, int v1, int v2) {
 }
 {% endhighlight %}
 
-Since the whole instruction is performed atomically, `CAS` is useful when it comes to implement multi-threaded applications and we need the threads to synchronize in some way. For example, most non-blocking algorithm mplementations use `CAS`, from [linked lists](https://timharris.uk/papers/2001-disc.pdf) to [binary search trees](https://dl.acm.org/citation.cfm?id=2555256).
+Since the whole instruction is performed atomically, `CAS` is useful when it comes to implementing multi-threaded applications and we need the threads to synchronize in some way. For example, most non-blocking algorithm mplementations use `CAS`, from [linked lists](https://timharris.uk/papers/2001-disc.pdf) to [binary search trees](https://dl.acm.org/citation.cfm?id=2555256).
 
 Most likely, you have heard or even used `CAS` at some point in your life.
 You might be using `CAS` even without knowing it, by for instance, using a [`ConcurrentLinkedQueue`](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentLinkedQueue.html) in Java.
 You might also have heard that `CAS` is necessary to implement any non-blocking (e.g., lock-free) algorithm. It is for this reason that most modern processors support `CAS`. But is this really the case? Surprisingly the answer is **no**. 
 
-Maybe during your university years, you have taken a course in concurrency and learned about consensus, consensus number, consensus (or Herlihy's) hierarchy, etc., so you might think that "We definitely need a synchronization primitive with a consensus number of infinity such as `CAS`, otherwise we will not be able to implement non-blocking algorithms!" At least, this is what I would have said until recently. After all, the "selling point" of the consensus hierarchy is to decide which instructions to put in a processor based on their synchronization power.
+Maybe during your university years, you have taken a course in concurrency and learned about consensus, consensus numbers, consensus (or Herlihy's) hierarchy, etc., so you might think that "We definitely need a synchronization primitive with a consensus number of infinity such as `CAS`, otherwise we will not be able to implement non-blocking algorithms!" At least, this is what I would have said until recently. After all, the "selling point" of the consensus hierarchy is that it allows us to decide which instructions to put in a processor based on their synchronization power.
 
-However, this is not the case: We can implement any non-blocking algorithm for any number of threads using synchronization primitives that have consensus number one. Yes, one! In this post, you see why the consensus hierarchy does not apply in actual systems. 
+However, this is not the case: We can implement any non-blocking algorithm for any number of threads using synchronization primitives that have consensus number one. Yes, one! In this post, I'll explain why the consensus hierarchy does not apply in actual systems. 
 
 Do not worry if all the previous terminology confused you. I will explain what non-blocking algorithms are, the consensus problem and the consensus hierarchy, the relation between `CAS` and the consensus problem, and why the consensus hierarchy does not apply in practice. At the end you will understand why *modern multiprocessors do not really need the `CAS` instruction*.
 
@@ -66,7 +64,7 @@ int increment(int* counter) {
 }
 {% endhighlight %}
 
-The approach of using a global lock to transform a sequential algorithm to a concurrent one has the advantages that it is easy to implement such an algorithm and verify it is correct.
+The approach of using a global lock to transform a sequential algorithm into a concurrent one has at least two advantages (i) it is easy to implement such an algorithm and (ii) it is easy to verify it is correct.
 Howerver it has some notable drawbacks.
 One issue with such an implementation is that it does not scale: as we increase the number of threads, threads will contend more on this global lock. 
 Another issue related to performance is the following: What if a thread that holds the lock suddenly stops executing? 
@@ -89,10 +87,11 @@ int increment(int* counter) {
 }
 {% endhighlight %}
 
-This concurrent counter does not have the drawback of the previous global-lock approach. In case a thread that is about to increment the counter gets preempted for a great amount of time, other threads can keep using and incrementing this counter. Unfortunately, non-blocking algorithms are much harder to devise and verify correct. For example, the first [non-blocking binary search tree](https://dl.acm.org/citation.cfm?id=1835736) is a quite involved algorithm that was devised pretty recently (in 2010).
+This concurrent counter does not have the drawback of the previous global-lock approach. In case a thread that is about to increment the counter gets preempted for
+some time, other threads can keep using and incrementing this counter. Unfortunately, non-blocking algorithms are much harder to devise and verify correct. For example, the first [non-blocking binary search tree](https://dl.acm.org/citation.cfm?id=1835736) is a quite involved algorithm that was devised pretty recently (in 2010).
 
 There are actually at least two categories of non-blocking algorithms: *lock-free* and *wait-free* ones. Specifically, a function is *wait-free* if it guarantees that if one threads keeps taking steps (i.e., the scheduler gives it time slices), then the function call will terminate in a finite number of steps. For instance, the above counter is a wait-free counter, since we are guaranteed that every call to `increment` will finish in a finite number of steps. 
-A function is *lock-freed* on the other hand, if at least one thread always completes its execution in a finite number of steps. Lock-freedom allows individual threads to starve but the system as a whole makes progress, since some thread will always complete the execution of such a function. For instance, let us assume we wanted to implement the aforementioned concurrent counter using compare-and-swap. An approach would be the following:
+A function is *lock-free* on the other hand, if at least one thread always completes its execution in a finite number of steps. Lock-freedom allows individual threads to starve (i.e., not progress) but the system as a whole makes progress, since some thread will always complete the execution of such a function. For instance, let us assume we wanted to implement the aforementioned concurrent counter using compare-and-swap. An approach would be the following:
 
 {% highlight c %}
 int increment(int* counter) {
@@ -107,7 +106,7 @@ int increment(int* counter) {
 The above algorithm is non-blocking but is not wait-free. To see this, think of two threads (t0 and t1) that keep callling `increment` and that execute as follows. I assume that the `counter` contains `0` initially and in the following table, time moves from top to bottom.
 
 | thread 0      |   thread 1    |  description |
-| ------------- |:-------------:|--------:|
+|: ------------- |:-------------|:----------|
 | `value = 0`  |  `value = 0` |   |
 |     no step   |    `CAS(counter, 0, 1)` | `CAS` succeeds |
 |   no step     |     `return 0`  | |
@@ -118,7 +117,7 @@ The above algorithm is non-blocking but is not wait-free. To see this, think of 
 |  `CAS(counter, 1, 2)` | no step | `CAS` fails |
 |  ... | ... | |
 
-As you can see in the above execution, thread 1 always suceeds in performing the `CAS` and has completing an `increment` execution, while thread 0 never does. Nevertheless, if a thread fails in the `CAS`, this means that same other thread succeeded and hence there is progress.
+As you can see in the above execution, thread 1 always suceeds in performing the `CAS` and has completed an `increment` execution, while thread 0 never does. Nevertheless, if a thread fails in the `CAS`, this means that same other thread succeeded and hence there is progress in the system as a whole.
 
 As a remark, notice that if each thread executes a function at most once, then in such a setting a `lock-free` function is equivalent to being `wait-free`.
 
@@ -177,25 +176,27 @@ int propose(int value) {
     return proposed_valued[1 - thread_id];
 }
 {% endhighlight %}
+
 The solution works as follows. We assume that each thread is associated with a `thread_id`. One thread has `thread_id = 0` while the other has `thread_id = 1`. Before the threads increment the `counter`, they store the value they want to propose to their respective slot in the `proposed_values` array. The first thread that performs the `fetch_and_add` will get `0` as a return value and is considered to "win" the consensus hence it returns its own value. Otherwise, if a thread loses, it returns the other thread's proposed value.
 
 Assume now, we want to solve consensus between three threads by only using `fetch_and_add`, `read`, and `write` instructions. Well, we *cannot*! It is impossible.
-If you are interested you can find a proof here but it is beyond the discussion of this post.
+If you are interested you can find a proof [here](https://www.elsevier.com/books/the-art-of-multiprocessor-programming-revised-reprint/herlihy/978-0-12-397337-5) but it is beyond the discussion of this post.
 Surprisingly, using `CAS` we can solve consensus for any number of threads, while by only using `fetch_and_add`` we can solve consensus for up to two threads. This lead us to a hierarchy of instructions based on their power to solve consensus, known as the _consensus hierarchy_.
 
 
 
 ### Consensus Hierarchy
-[Maurice Herlihy](http://cs.brown.edu/people/mph/) was the first to notice that different object can solve consensus for different number of threads and proposed a hierarchy that captures the power of these primitives. This hierarchy is based on the notion of a _consensus number_. An instruction ins has consensus number k if it can solve consensus in a wait-free manner for up to k threads. In the following table, you can see some instructions and their corresponding consensus number. `CAS` has consensus number of infinity since it can be used to solve consensus between an arbitrary number of threads. 
+[Maurice Herlihy](http://cs.brown.edu/people/mph/) noticed that different primitives can solve consensus for different number of threads and proposed a hierarchy that captures the power of these primitives. This hierarchy is based on the notion of a _consensus number_. 
+An instruction `ins` has consensus number `k` if it can solve consensus in a wait-free manner for up to `k` threads. In the following table, you can see some instructions and their corresponding consensus number. `CAS` has consensus number of infinity since it can be used to solve consensus between an arbitrary number of threads. 
 
 | instruction   |  consensus number   | 
-| ------------- |:-------------:|
+|:------------- |:-------------|
 |   `CAS`       |   +oo  |
 |  ...           |   .... |
 | `fetch-and_add` | 2 |
 | `read/write`  | 1 |
 
-Herlihy also showed that, for any k we can devise an instruction that has this consensus number.
+Herlihy also showed that, for any `k` we can devise an instruction that has this consensus number.
 
 The folklore belief is that the fact that `CAS` is more powerful in this sense compared to other instructions, lead processor designers to introduce the `CAS` in their processors. 
 
@@ -204,7 +205,7 @@ Actually, a "selling-point" behind the consensus hiearchy was exactly that as yo
 [Wait-Free Synchronization](https://cs.brown.edu/~mph/Herlihy91/p124-herlihy.pdf)
 > We have tried to suggest here that the resulting theory has a rich structure, yielding a number of unexpected results with consequences for algorithm design, multiprocessor architectures, and real-time systems.
 
-Others, also have hinted that the fact that compare-and-swap is so powerful was the reason that it was added in  modern processors. To prove this fact, I provide two excerpts below:
+Others, also have hinted that the fact that compare-and-swap is so powerful was the reason that it was added in  modern processors. To prove this fact, I provide the following two excerpts:
 
 [A Quarter-Century of Wait-Free Synchronization](https://dl.acm.org/citation.cfm?id=2789164
 )
@@ -223,11 +224,53 @@ solve wait-free consensus for 3 or more processes. However,
 a system that supports both instructions can solve wait-free
 binary consensus for any number of processes.
 
-Wait, what? This paper argues, that we can use objects with consensus number 2 to have an object with consensus number infinity. How is this even possible? Let us see. The authors state " ". Herlihy's hierarchy talks about operations by themselves, but in reality in multi-processors we can apply more than one operation to a specific memory location. We can for example apply a `fetch&add`, a `xor`, etc.
+Wait, what? This paper argues, that we can use objects with consensus number 2 to have an object with consensus number infinity. How is this even possible? Let us see.
+
+Herlihy's hierarchy talks about instructions by themselves. In other words, if you have two instructions `ins1` and `ins2` with consensus number 2 each, you cannot combine them to get an instruction with a consensus number greater than 2. However, Herlihy was talking about instructions that are applied to different memory locations. So, in a system where each memory location either supports `ins1` or `ins2`, then we cannot get an instruction with a consensus number greater than 2. In reality however, and as the authors of the "A Complexity-Based Hierarchy for Multiprocessor Synchronization" noticed, this is not the case. In actual multi-processors, we can apply more than one instruction to a specific memory location and hence Herlihy's hierarchy collapses.
+
+We can for example use the `fetch_and_add` and a `test_and_set` instructions to solve binary consensus for any number of threads, even though `fetch_and_add` and `test_and_set` have each consensus number 2. 
+Before I continue, let me explain what binary consensus is and what a `test_and_set` instruction does. Binary consensus refers to the fact that the only value a thread can propose is either 0 or 1. We can 
+easily extend binary consensus to normal consensus by using a binary tree. The `test_and_set` returns the number stored in it and sets it to 1 if it was 0. In other words the `test_and_set` executes the following code atomically.
+
+{% highlight c %}
+int test_and_set(int *p) {
+    if (*p == 0) {
+        *p = 1;
+    }
+    return *p;
+}
+{% endhighlight c%}
+
+The algorithm for solving binary consensus using only `fetch_and_add` and `test_and_set` is the following. Note that we use an extension of the `fetch_and_add` that also takes the number to be added. In any case, this extended `fetch_and_add` still has consensus number 2.
+{% highlight c %}
+
+int decide = 0;
+
+int propose(int value) { // value can be only 0 or 1
+    int result;
+    if (value == 0) {
+        result = fetch_and_add(&decide, 2);
+    }
+    else {
+        result = test_and_set(&decide);
+        if (result == 0) {
+            return 1;
+        }
+    }
+    if (result % 2 == 1) {
+        return 1;
+    }
+    return 0;
+}
+{% endhighlight %}
+
+The algorithm works as follows. The first thread that succeeds in executing `fetch_and_add` or `test_and_set` will be the one to "win" (i.e., impose its value) the consensus. If the winning thread was proposing 0 then it added 2 to the `decide` value making sure that the value remains forever even. If the winning thread proposed 1 then it made the `decide` value equal to 1 and then all subsequent `fetch_and_add`'s will keeep the `decide` value as odd. By checking if the `decide` value has an even or an odd number we can see which value was decided.
 
 
-There were at least two more papers that worked on this result: DISC17, PODC18. DISC17 did this and that, while PODC18 did that and the other.
+ The binary consensus algorithm described above was taken from the  [A Complexity-Based Hierarchy for Multiprocessor Synchronization](https://dl.acm.org/citation.cfm?id=2933113) paper. To wrap up, this means that a processor that does not support `CAS` but only supports `fetch_and_add` and `test_and_set` can be used to implement any non-blocking aglorithm! 
 
 ## Conclusion
-To conclude. You do not really need compare-and-swap in your multiprocessor to implement a non-blocking algorithm for any number of threads. I hope I convinced you for that. However, having a single instruction that is so powerful as `CAS` is pretty useful. Even if we implemented `CAS` using lower-level instructions, such an implementation is likely to be substantially less performant than using `CAS`. If you want to learn more about all these things, the book "The Art of Multiprocessor Programming" is an excellent source.
+To conclude. You do not really need compare-and-swap in your multiprocessor to implement any wait-free algorithm for any number of threads. I hope I convinced you for that. However, having a single instruction that is so powerful as `CAS` is pretty useful. Even if we implemented `CAS` using lower-level instructions, such an implementation is likely to be substantially less performant than just using `CAS`. If you want to learn more about all these things, the book "The Art of Multiprocessor Programming" is an excellent source.  Also, some relevant interesting papers on the subject are the aforementioned [A Complexity-Based Hierarchy for Multiprocessor Synchronization](https://dl.acm.org/citation.cfm?id=2933113), as well as [Brief Announcement: Towards Reduced Instruction Sets for Synchronization
+](http://drops.dagstuhl.de/opus/frontdoor.php?source_opus=8020) and [Is Compare-and-Swap Really Necessary?
+](https://arxiv.org/abs/1802.03844).
 
