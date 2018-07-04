@@ -26,7 +26,7 @@ I have to CHANGE The discussion to OBJECTS ... not instructions ... now the mix 
 Most modern processors support the compare-and-swap (`CAS`) instruction (e.g., `CMPXCHG` in x86 architectures). 
 You can think that a `CAS` instruction executes the following code **atomically**.
 
-{% highlight c %}
+{% highlight java %}
 boolean CAS(int *p, int v1, int v2) {
     if (*p == v1) {
         *p = v2;
