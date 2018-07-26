@@ -29,7 +29,7 @@ Although I have been buying books with BookDepository for more than 7 years, I n
 
 ![Book from an American IP.]({{ "/usa.jpg" | absolute_url }})
 
-![Book from an American IP.]({{ "usa.jpg" | absolute_url }})
+![Book from an American IP.]({{ "/images/usa.jpg" | absolute_url }})
 
 
 ![](usa.png) (Book from an American IP.)
