@@ -86,24 +86,27 @@ we can retrieve the price of a book. To make the above code AWS Lambda compatibl
 
 Now, we just have to make our code compatible for a AWS Lambda function. For this we are going to introduce an extra dependency 
 
-{% highlight %}
+```
 <dependency>
     <groupId>com.amazonaws</groupId>
     <artifactId>aws-lambda-java-core</artifactId>
     <version>1.2.0</version>
 </dependency>
-{% endhighlight %}
+```
 
 then we have to change the class to implement `public class BookPriceFinder implements RequestHandler<String, String>`. This means that our function will get something of type `String` and return something of type `String`.
 We would also need to introduce (`@Override`) the method `handleRequest`
 
+```java
 @Override
 public String handleRequest(String input, Context context) {
     return null;
 }
+```
 
 This will be the AWS function and it takes an `input` and returns a `String`. The [`context`](https://docs.aws.amazon.com/lambda/latest/dg/java-context-object.html) can provide your function with useful information regarding its AWS Lambda execution environment such as the memory limit, remaining time to execute, etc. I did not have to use this parameter, since my function was pretty simple. So, now our Java code would be something like this:
 
+```java
 public class BookPriceFinder implements RequestHandler<String, String> {
     public String getBookPrice(String URL) throws IOException {
         Document doc = Jsoup.connect(URL).get();
@@ -120,9 +123,11 @@ public class BookPriceFinder implements RequestHandler<String, String> {
         }
     }
 }
+```
 
 To upload our method to AWS Lambda, we will first need to pack everything into a JAR file that will also introduce the dependencies. This can be done by adding a `build` tag in your `pom.xml` file as described [here](https://docs.aws.amazon.com/lambda/latest/dg/java-create-jar-pkg-maven-no-ide.html).
 
+```
     <build>
         <plugins>
             <plugin>
@@ -143,6 +148,7 @@ To upload our method to AWS Lambda, we will first need to pack everything into a
             </plugin>
         </plugins>
     </build>
+```
 
 Now, you need to deploy your code. To do so, go to "AWS Lambda Management Console" and click on "Create Function" as shown below:
 
@@ -159,6 +165,7 @@ Finally, there are many ways to call your AWS Lambda function. One way is to cre
 ## Scraping BookDepository
 After deploying my lambda function in 12 regions, I could easily write a small Python script that given the URL of a book, it returned the price of each book in each region (I found the Python [requests](http://docs.python-requests.org/en/master/) library pretty easy to use to issue HTTP `GET` requests). Now, I just had to find 100,000 book URLs to check the prices of each book. To do this, I had to crawl and scrap BookDepository. Fortunately, there exists many easy-to-use and good libraries for this. An especial nice and powerful one is Python's [Scrapy](https://scrapy.org/) that has an excellent [documentation](https://docs.scrapy.org/en/latest/intro/tutorial.html) to get you started.  I just had to write the following code and I was ready to start getting BookDepository URLS for books:
 
+```python
 import scrapy
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
@@ -185,7 +192,7 @@ class BookDepositorySpider(CrawlSpider):
             next_page = response.css('div.item-img a::attr("href")').extract_first()
             if next_page is not None:
                 yield response.follow(next_page, self.parse)
-
+```
 
 BookDepository starts blocking your requests if you issue to many the one after the other. To solve this I set the [`DOWNLOAD_DELAY`(https://doc.scrapy.org/en/latest/topics/settings.html#download-delay) to 0.25. If you do not want to use your personal computer to crawl BookDepository you can utilize a service such a [Scrapy Cloud](https://scrapinghub.com/scrapy-cloud), you just upload your Scrapy code and they take care of the rest, although I found Scrapy Cloud to be a bit expensive (9$ per month). 
 
