@@ -49,7 +49,7 @@ For finding the prices of multiple books, the price difference between using EC2
 
 AWS Lambda allows the function to be created in a number of languages including Java 8, C# (.NET Core 2.1), Go (1.x), and Python 3.6. For my purposes I used Java with IntelliJ IDEA so I'll describe the steps on how to deploy an AWS Lambda function using these tools. It should not be extremely different if you use something else. First of all, go and create a new Maven project. Then, we are going to use the [jsoup](https://jsoup.org/) Java library to get the price of a book from BookDepository URL, therefore add the following dependency on your `pom.xml` file.
 
-{% highlight %}
+````
 <dependencies>
     <dependency>
         <groupId>org.jsoup</groupId>
@@ -57,12 +57,11 @@ AWS Lambda allows the function to be created in a number of languages including 
         <version>1.8.3</version>
     </dependency>
 </dependencies>
-{% endhighlight %}
-
+```
 
 By checking the page source of a BookDepository URL and notice that the price of the book is included here `<span class="sale-price">US$32.70</span>`. Therefore, with the following code
 
-{% highlight Java %}
+```java
 public class BookPriceFinder {
     public String getBookPrice(String URL) throws IOException {
         Document doc = Jsoup.connect(URL).get();
@@ -80,7 +79,7 @@ public class BookPriceFinder {
         }
     }
 }
-{% endhighlight %}
+```
 
 we can retrieve the price of a book. To make the above code AWS Lambda compatible we need
 
