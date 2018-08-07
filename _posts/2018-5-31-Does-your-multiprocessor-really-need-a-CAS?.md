@@ -276,4 +276,4 @@ To conclude. You do not really need compare-and-swap in your multiprocessor to i
 
 
 #### Acknowledgements
-I would like to thank [gfredericks](https://github.com/gfredericks) for pointing out a mistake in the consensus algorithm that used `CAS`.
+I would like to thank [gfredericks](https://github.com/gfredericks) for pointing out a mistake in the `CAS`-based consensus algorithm.
