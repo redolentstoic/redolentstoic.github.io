@@ -208,7 +208,7 @@ BookDepository starts blocking your requests if you issue to many the one after 
 After getting 100,000 book URLS and checking the price of each book from 12 different Amazon regions, I could finally answer my questions. 
 
 
-The average price (all prices are in USD - I used the [forex-python](https://github.com/MicroPyramid/forex-python) library to covert other currencies to USD) of all books per regions is the one below:
+The average price (all prices are in USD - I used the [forex-python](https://github.com/MicroPyramid/forex-python) library to covert other currencies to USD) of the 100,000 books per regions is depicted below.
 
 
 | region      |   price (in USD)    |
@@ -232,10 +232,12 @@ The biggest difference between two regions that I found was of $5298.33 between 
 ![Price in Tokyo.]({{ "/images/tokyo.png" | absolute_url }})
 
 
-Finally, note that I used 12 regions since I only took into account N. California for a region from the United States. It might be the case that BookDepository also charges differently in the same country depending on the city somebody resided. This might be interesting to look at.
+Finally, note that I used 12 regions since I only took into account N. California for a region from the United States. It might be the case that BookDepository also charges differently in the same country depending on the city somebody resided. This might be interesting to look at. Also, note that the presented prices might have changed at the time you are reading this.
 
-To conclude, this whole experiment took more time than expected. Some things although seemed easy can be tricky to get right, such as reading prices (i.e., commas and periods might have a different meaning depending on the country.
-I hope my post gave you an idea on what AWS Lambda is and convinced you to have a look before buying a book from a BookDepository.
+The whole experiment took more time than expected. Some things although seemed easy at first can be tricky to get right. For example, reading prices can be complicated since commas and periods might have a different meaning depending on the country.
+
+
+I hope my post gave you an idea on what AWS Lambda is and convinced you to spend some time before buying a book from a BookDepository.
 
 
 
