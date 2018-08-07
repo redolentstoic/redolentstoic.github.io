@@ -155,7 +155,7 @@ We start by providing a consensus algorithm that uses compare-and-swap:
 int decision = -1; 
 
 int propose(int value) {
-    while (!CAS(&decision, -1, value));
+    CAS(&decision, -1, value);
     return decision;
 }
 {% endhighlight %}
@@ -274,3 +274,6 @@ To conclude. You do not really need compare-and-swap in your multiprocessor to i
 ](http://drops.dagstuhl.de/opus/frontdoor.php?source_opus=8020) and [Is Compare-and-Swap Really Necessary?
 ](https://arxiv.org/abs/1802.03844).
 
+
+#### Acknowledgements
+I would like to thank [gfredericks](https://github.com/gfredericks) for pointing out a mistake in the consensus algorithm that used `CAS`.
